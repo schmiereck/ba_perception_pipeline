@@ -8,6 +8,31 @@ image has already been rectified (no distortion).
 import numpy as np
 
 
+def scale_depth(
+    d_relative: float,
+    a: float,
+    b: float,
+    model_type: str = 'inverse',
+) -> float:
+    """Convert relative depth from DA V2 to metric depth (meters).
+
+    Parameters
+    ----------
+    d_relative : float
+        Relative depth value from DA V2 (0.0–1.0).
+    a, b : float
+        Calibration parameters from ``depth_calibration.yaml``.
+    model_type : str
+        ``"inverse"`` for ``Z = a / d + b``,
+        ``"inverse_no_offset"`` for ``Z = a / d``,
+        ``"linear"`` for ``Z = a * d + b``.
+    """
+    if model_type in ('inverse', 'inverse_no_offset'):
+        return a / max(d_relative, 1e-6) + b
+    else:  # linear
+        return a * d_relative + b
+
+
 def backproject(
     u: float,
     v: float,

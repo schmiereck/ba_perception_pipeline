@@ -21,6 +21,7 @@ import time
 
 import cv2
 import numpy as np
+import yaml
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import (
@@ -34,7 +35,7 @@ from sensor_msgs.msg import CameraInfo, CompressedImage, Image
 from std_msgs.msg import String
 
 from ba_depth_node.depth_estimator import DepthEstimator
-from ba_perception_pipeline.backprojection import backproject
+from ba_perception_pipeline.backprojection import backproject, scale_depth
 from ba_perception_pipeline.vlm_client import VLMClient
 
 
@@ -79,6 +80,9 @@ class PerceptionPipelineNode(Node):
             0.0, 0.0, 0.0, 1.0,
         ])
 
+        # Depth calibration
+        self.declare_parameter('depth_calibration_file', '')
+
         # Debug
         self.declare_parameter('debug_save_path', '')
 
@@ -121,6 +125,27 @@ class PerceptionPipelineNode(Node):
         he_flat = self.get_parameter('hand_eye_transform') \
             .get_parameter_value().double_array_value
         self._T_robot_cam = np.array(he_flat, dtype=np.float64).reshape(4, 4)
+
+        # -- depth calibration (relative → metric) -----------------------
+        depth_cal_file = self.get_parameter('depth_calibration_file') \
+            .get_parameter_value().string_value
+        self._depth_cal = None
+        if depth_cal_file:
+            try:
+                with open(depth_cal_file, 'r') as f:
+                    self._depth_cal = yaml.safe_load(f)
+                self.get_logger().info(
+                    f'Depth calibration loaded: '
+                    f'{self._depth_cal["model_type"]}, '
+                    f'a={self._depth_cal["a"]:.6f}, '
+                    f'b={self._depth_cal["b"]:.6f}, '
+                    f'RMSE={self._depth_cal["rmse_m"]*100:.1f}cm')
+            except Exception as e:
+                self.get_logger().error(
+                    f'Failed to load depth calibration: {e}')
+        else:
+            self.get_logger().warn(
+                'No depth_calibration_file set — using relative depth')
 
         # -- depth estimator (in-process, no DDS) -------------------------
         self._depth_estimator = DepthEstimator(
@@ -314,11 +339,23 @@ class PerceptionPipelineNode(Node):
             return
 
         # 5. Backprojection → camera frame -------------------------------
-        Z = float(depth_f32[v, u])
+        d_rel = float(depth_f32[v, u])
         if self._K is None:
             self._publish_status(
                 'ERROR: camera intrinsics not available (no camera_info)')
             return
+
+        # Scale to metric depth if calibration is available
+        if self._depth_cal:
+            Z = scale_depth(
+                d_rel,
+                self._depth_cal['a'],
+                self._depth_cal['b'],
+                self._depth_cal['model_type'])
+            self.get_logger().info(
+                f'Depth: d_rel={d_rel:.4f} → Z_metric={Z:.4f}m')
+        else:
+            Z = d_rel
 
         point_cam = backproject(u, v, Z, self._K)
         self.get_logger().info(
@@ -347,7 +384,7 @@ class PerceptionPipelineNode(Node):
         dt_total = (time.perf_counter() - t0) * 1000.0
         status = (
             f'OK: "{prompt}" → pixel ({u},{v}), '
-            f'depth {Z:.3f}, '
+            f'd_rel={d_rel:.3f}, Z={Z:.4f}{"m" if self._depth_cal else ""}, '
             f'robot [{point_robot[0]:.4f}, {point_robot[1]:.4f}, '
             f'{point_robot[2]:.4f}], '
             f'{dt_total:.0f} ms total')

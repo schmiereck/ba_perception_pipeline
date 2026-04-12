@@ -37,6 +37,12 @@
       0.0, 0.0, 0.0, 1.0,
     ]
 
+    # --- Depth Calibration ---
+    # Path to depth_calibration.yaml (from calibrate_depth.py).
+    # Maps relative DA V2 depth to metric meters.
+    # Leave empty ("") to use relative depth (no scaling).
+    depth_calibration_file: ""
+
     # --- Debug ---
     # Set to a directory path to save debug images (depth + annotated).
     # Leave empty ("") to disable.
