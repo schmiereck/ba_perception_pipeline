@@ -41,7 +41,7 @@
     # Path to depth_calibration.yaml (from calibrate_depth.py).
     # Maps relative DA V2 depth to metric meters.
     # Leave empty ("") to use relative depth (no scaling).
-    depth_calibration_file: ""  # z.B. "/home/thomas/ros2_ws/src/ba_perception_pipeline/config/depth_calibration.yaml"
+    depth_calibration_file: "/home/thomas/ros2_ws/src/ba_perception_pipeline/config/depth_calibration.yaml"
 
     # --- Debug ---
     # Set to a directory path to save debug images (depth + annotated).
