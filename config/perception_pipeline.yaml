@@ -1,0 +1,43 @@
+# Parameters for the perception_pipeline_node.
+#
+# Uses "/**" wildcard so the same YAML works regardless of namespace/node name.
+/**:
+  ros__parameters:
+    # --- Topics ---
+    image_topic: "/ba_overview_camera/image_raw/compressed"
+    camera_info_topic: "/ba_overview_camera/camera_info"
+    request_topic: "/perception/detect_request"
+    pose_topic: "/perception/target_pose"
+    status_topic: "/perception/status"
+    depth_debug_topic: "/ba_overview_camera/depth/image_raw"
+
+    # --- Depth Anything V2 ---
+    depth_model_id: "depth-anything/Depth-Anything-V2-Small-hf"
+    depth_device: "cpu"
+
+    # --- VLM ---
+    # Provider: "groq" or "gemini"
+    vlm_provider: "groq"
+    vlm_model: "meta-llama/llama-4-scout-17b-16e-instruct"
+    # API key — set via environment variable or override here.
+    # IMPORTANT: do not commit real API keys to git!
+    vlm_api_key: ""
+
+    # --- Rectification ---
+    rectify: true
+
+    # --- Hand-Eye Transform ---
+    # 4x4 matrix (row-major) mapping camera frame → robot base frame.
+    # Identity = no transform (camera = robot frame).
+    # Replace with calibrated values.
+    hand_eye_transform: [
+      1.0, 0.0, 0.0, 0.0,
+      0.0, 1.0, 0.0, 0.0,
+      0.0, 0.0, 1.0, 0.0,
+      0.0, 0.0, 0.0, 1.0,
+    ]
+
+    # --- Debug ---
+    # Set to a directory path to save debug images (depth + annotated).
+    # Leave empty ("") to disable.
+    debug_save_path: "/tmp"
