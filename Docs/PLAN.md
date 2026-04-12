@@ -102,17 +102,37 @@ usb_cam ──JPEG──►     ┌───────────────
 
 ---
 
-## Phase 4: Metrische Tiefenskalierung (nächste Phase)
+## Phase 4: Metrische Tiefenskalierung
 
 DA V2 Small liefert **relative inverse depth** (0.0–1.0), keine metrischen
 Werte. Für MoveIt-Grasp-Planning brauchen wir echte Meter.
 
-**Ansatz**: Kalibrierungsprozedur mit bekannten Referenzpunkten (z.B.
-Schachbrettmuster in bekanntem Abstand). Soll als Script/Tool angelegt
-werden, das einfach mehrmals ausführbar ist — einmal für die Entwicklung,
-einmal am finalen Roboter-Arbeitsplatz.
+**Ansatz**: Interaktives Kalibrierscript (`scripts/calibrate_depth.py`) mit
+OpenCV-GUI-Fenster. Schachbrettmuster (9×7 Felder = 8×6 innere Ecken, 25mm
+Feldgröße) in verschiedenen Abständen vor die Kamera halten. Per `solvePnP`
+wird automatisch der metrische Abstand berechnet — kein Messen von Hand nötig.
 
-**Details**: noch zu planen.
+### Status
+
+- [x] Phase 4.1: `calibrate_depth.py` — interaktives Script mit Live-Preview
+- [x] Phase 4.2: `scale_depth()` in `backprojection.py`
+- [x] Phase 4.3: Pipeline-Integration (`depth_calibration_file` Parameter)
+- [x] Phase 4.4: Erste Kalibrierung durchgeführt und verifiziert
+
+### Erste Kalibrierung (2026-04-12)
+
+```
+model_type: linear
+a: -0.722, b: 0.968
+RMSE: 6.2 cm
+Bereich: 33–68 cm (5 Captures, 240 Datenpunkte)
+```
+
+End-to-End verifiziert: Pipeline liefert jetzt metrische Koordinaten
+(z.B. Z=0.81m für ein Objekt auf dem Tisch bei schrägem Kamerablick).
+
+Die Kalibrierung kann jederzeit wiederholt werden (z.B. am finalen
+Roboter-Arbeitsplatz) — einfach das Script erneut ausführen.
 
 ---
 
@@ -125,7 +145,8 @@ einmal am finalen Roboter-Arbeitsplatz.
 5. [x] ROS2 Depth-Node: subscribt compressed Topic, gibt Depth-Map aus
 6. [x] VLM-Call integrieren: Zielpixel aus Bild extrahieren
 7. [x] Koordinatenberechnung: Pixel + Tiefe → 3D-Punkt
-8. [ ] **Metrische Tiefenskalierung** (Phase 4)
-9. [ ] Hand-Eye-Kalibrierung einsetzen (Transform ist kalibriert, muss in Config)
-10. [ ] MoveIt-Goal aus 3D-Koordinaten generieren
-11. [ ] Gripper-Kamera ergänzen (spätere Phase)
+8. [x] Metrische Tiefenskalierung (Kalibrierung + Pipeline-Integration)
+9. [ ] **Hand-Eye-Transform einsetzen** (Kalibrierung existiert, 4×4-Matrix in Config eintragen)
+10. [ ] **MoveIt-Goal aus 3D-Koordinaten generieren**
+11. [ ] Tiefenkalibrierung am Roboter-Arbeitsplatz wiederholen
+12. [ ] Gripper-Kamera ergänzen (spätere Phase)

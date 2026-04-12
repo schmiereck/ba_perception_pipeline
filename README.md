@@ -168,3 +168,15 @@ Zugriff von Windows: `\\wsl.localhost\Ubuntu-22.04\tmp\`
 | VLM (Groq, Llama 4 Scout) | ~400–600 ms |
 | Backprojection + Hand-Eye | < 1 ms |
 | **Gesamt** | **~1800–2500 ms** |
+
+## Aktueller Stand
+
+- Perception Pipeline funktioniert end-to-end (Kamera → Depth → VLM → 3D-Punkt)
+- Metrische Tiefenkalibrierung durchgeführt (RMSE 6.2cm über 33–68cm)
+- Hand-Eye-Transform ist noch Identity — muss mit kalibrierter 4×4-Matrix befüllt werden
+
+## Nächste Schritte
+
+1. **Hand-Eye-Transform einsetzen** — kalibrierte 4×4-Matrix in `config/perception_pipeline.yaml` unter `hand_eye_transform` eintragen
+2. **MoveIt-Goal generieren** — aus den 3D-Roboter-Koordinaten ein MoveIt-Ziel erzeugen
+3. **Tiefenkalibrierung am Arbeitsplatz wiederholen** — Script erneut ausführen wenn Kamera umpositioniert wird
