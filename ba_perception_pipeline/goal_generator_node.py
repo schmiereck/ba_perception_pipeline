@@ -97,7 +97,7 @@ class BAGoalGenerator(Node):
         # Position Constraint
         pos_con = PositionConstraint()
         pos_con.header.frame_id = self._base_frame
-        pos_con.link_name = 'gripper_link' # Adjust if your EE link has a different name
+        pos_con.link_name = 'tcp_link' # Based on SRDF arm chain tip_link
         
         # Target volume (a small sphere/box around the target)
         volume = BoundingVolume()
