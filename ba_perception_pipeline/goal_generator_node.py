@@ -24,7 +24,7 @@ class BAGoalGenerator(Node):
         super().__init__('ba_goal_generator')
 
         # -- parameters --------------------------------------------------
-        self.declare_parameter('planning_group', 'bracket_arm')
+        self.declare_parameter('planning_group', 'arm')
         self.declare_parameter('base_frame', 'base_link')
         self.declare_parameter('z_offset', 0.10)  # 10 cm safety distance
         self.declare_parameter('z_min', 0.0)      # Minimum safety height (table level)
@@ -114,7 +114,7 @@ class BAGoalGenerator(Node):
         # Orientation Constraint
         ori_con = OrientationConstraint()
         ori_con.header.frame_id = self._base_frame
-        ori_con.link_name = 'gripper_link'
+        ori_con.link_name = 'tcp_link'
         ori_con.orientation = pose.pose.orientation
         ori_con.absolute_x_axis_tolerance = 0.1
         ori_con.absolute_y_axis_tolerance = 0.1
@@ -127,7 +127,7 @@ class BAGoalGenerator(Node):
         # We want MoveIt to plan AND execute
         goal_msg.planning_options.plan_only = False
 
-        self.get_logger().info(f'Sending goal to MoveIt for link "gripper_link"...')
+        self.get_logger().info(f'Sending goal to MoveIt for link "tcp_link"...')
         self._action_client.send_goal_async(goal_msg)
 
 def main(args=None):
