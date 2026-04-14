@@ -51,11 +51,11 @@ class PerceptionPipelineNode(Node):
         self.declare_parameter('camera_info_topic',
                                '/ba_overview_camera/camera_info')
         self.declare_parameter('request_topic',
-                               '/perception/detect_request')
+                               '/ba_perception/detect_request')
         self.declare_parameter('pose_topic',
-                               '/perception/target_pose')
+                               '/ba_perception/target_pose')
         self.declare_parameter('status_topic',
-                               '/perception/status')
+                               '/ba_perception/status')
         self.declare_parameter('depth_debug_topic',
                                '/ba_overview_camera/depth/image_raw')
 
@@ -302,14 +302,18 @@ class PerceptionPipelineNode(Node):
             self._publish_status('ERROR: no camera frame received yet')
             return
 
+        # Check for color
+        channels = bgr.shape[2] if len(bgr.shape) > 2 else 1
         self.get_logger().info(
-            f'Pipeline started: "{prompt}" '
-            f'(frame {bgr.shape[1]}x{bgr.shape[0]})')
+            f'Pipeline started: "{prompt}" ({bgr.shape[1]}x{bgr.shape[0]}, channels={channels})')
 
         # 2. Rectify -----------------------------------------------------
         if self._rectify and self._map_x is not None:
             bgr = cv2.remap(
                 bgr, self._map_x, self._map_y, cv2.INTER_LINEAR)
+
+        # Clean copy for VLM and Debug
+        vlm_bgr = bgr.copy()
 
         # 3. Depth estimation (in-process, no DDS) -----------------------
         t_depth = time.perf_counter()
@@ -326,7 +330,7 @@ class PerceptionPipelineNode(Node):
             return
 
         t_vlm = time.perf_counter()
-        u, v = self._vlm_client.detect_target(bgr, prompt)
+        u, v = self._vlm_client.detect_target(vlm_bgr, prompt)
         dt_vlm = (time.perf_counter() - t_vlm) * 1000.0
         self.get_logger().info(f'VLM: ({u}, {v}) in {dt_vlm:.0f} ms')
 
@@ -334,15 +338,13 @@ class PerceptionPipelineNode(Node):
         h, w = depth_f32.shape[:2]
         if not (0 <= u < w and 0 <= v < h):
             self._publish_status(
-                f'ERROR: VLM pixel ({u}, {v}) out of bounds '
-                f'({w}x{h})')
+                f'ERROR: VLM pixel ({u}, {v}) out of bounds ({w}x{h})')
             return
 
         # 5. Backprojection → camera frame -------------------------------
         d_rel = float(depth_f32[v, u])
         if self._K is None:
-            self._publish_status(
-                'ERROR: camera intrinsics not available (no camera_info)')
+            self._publish_status('ERROR: camera intrinsics not available')
             return
 
         # Scale to metric depth if calibration is available
@@ -352,22 +354,19 @@ class PerceptionPipelineNode(Node):
                 self._depth_cal['a'],
                 self._depth_cal['b'],
                 self._depth_cal['model_type'])
-            self.get_logger().info(
-                f'Depth: d_rel={d_rel:.4f} → Z_metric={Z:.4f}m')
+            self.get_logger().info(f'Depth: d_rel={d_rel:.4f} → Z_metric={Z:.4f}m')
         else:
             Z = d_rel
 
         point_cam = backproject(u, v, Z, self._K)
         self.get_logger().info(
-            f'Backprojection: camera frame '
-            f'[{point_cam[0]:.4f}, {point_cam[1]:.4f}, {point_cam[2]:.4f}]')
+            f'Backprojection: camera frame [{point_cam[0]:.4f}, {point_cam[1]:.4f}, {point_cam[2]:.4f}]')
 
         # 6. Hand-eye transform → robot frame ----------------------------
         point_cam_h = np.append(point_cam, 1.0)
         point_robot = (self._T_robot_cam @ point_cam_h)[:3]
         self.get_logger().info(
-            f'Hand-eye: robot frame '
-            f'[{point_robot[0]:.4f}, {point_robot[1]:.4f}, {point_robot[2]:.4f}]')
+            f'Hand-eye: robot frame [{point_robot[0]:.4f}, {point_robot[1]:.4f}, {point_robot[2]:.4f}]')
 
         # 7. Publish PoseStamped -----------------------------------------
         pose_msg = PoseStamped()
@@ -376,7 +375,6 @@ class PerceptionPipelineNode(Node):
         pose_msg.pose.position.x = float(point_robot[0])
         pose_msg.pose.position.y = float(point_robot[1])
         pose_msg.pose.position.z = float(point_robot[2])
-        # Orientation: identity (no gripper orientation yet)
         pose_msg.pose.orientation.w = 1.0
 
         self._pose_pub.publish(pose_msg)
@@ -386,14 +384,12 @@ class PerceptionPipelineNode(Node):
             f'OK: "{prompt}" → pixel ({u},{v}), '
             f'd_rel={d_rel:.3f}, Z={Z:.4f}{"m" if self._depth_cal else ""}, '
             f'robot [{point_robot[0]:.4f}, {point_robot[1]:.4f}, '
-            f'{point_robot[2]:.4f}], '
-            f'{dt_total:.0f} ms total')
+            f'{point_robot[2]:.4f}], {dt_total:.0f} ms total')
         self._publish_status(status)
-        self.get_logger().info(status)
 
         # Debug: save annotated image
         if self._debug_save_path:
-            self._save_debug_images(bgr, depth_f32, u, v, prompt)
+            self._save_debug_images(vlm_bgr, depth_f32, u, v, prompt)
 
     # -----------------------------------------------------------------
     # helpers

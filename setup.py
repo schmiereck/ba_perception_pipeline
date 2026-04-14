@@ -28,6 +28,7 @@ setup(
     entry_points={
         'console_scripts': [
             'perception_pipeline_node = ba_perception_pipeline.perception_pipeline_node:main',
+            'goal_generator_node = ba_perception_pipeline.goal_generator_node:main',
         ],
     },
 )

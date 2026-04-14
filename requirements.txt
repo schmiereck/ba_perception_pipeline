@@ -1,5 +1,5 @@
 # Core Math & Vision
-numpy
+numpy<2.0
 opencv-python
 scipy
 pyyaml

@@ -146,7 +146,8 @@ Roboter-Arbeitsplatz) — einfach das Script erneut ausführen.
 6. [x] VLM-Call integrieren: Zielpixel aus Bild extrahieren
 7. [x] Koordinatenberechnung: Pixel + Tiefe → 3D-Punkt
 8. [x] Metrische Tiefenskalierung (Kalibrierung + Pipeline-Integration)
-9. [ ] **Hand-Eye-Transform einsetzen** (Kalibrierung existiert, 4×4-Matrix in Config eintragen)
-10. [ ] **MoveIt-Goal aus 3D-Koordinaten generieren**
-11. [ ] Tiefenkalibrierung am Roboter-Arbeitsplatz wiederholen
-12. [ ] Gripper-Kamera ergänzen (spätere Phase)
+9. [x] **Hand-Eye-Transform einsetzen** (Matrix in Config eingetragen)
+10. [x] **MoveIt-Goal aus 3D-Koordinaten generieren** (Basis-Node erstellt)
+11. [ ] **Echte MoveIt-Ansteuerung finalisieren** (Action-Client vervollständigen)
+12. [ ] **Tiefenkalibrierung am Roboter-Arbeitsplatz wiederholen**
+13. [ ] **Gripper-Kamera ergänzen** (spätere Phase)

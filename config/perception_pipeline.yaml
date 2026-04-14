@@ -6,9 +6,9 @@
     # --- Topics ---
     image_topic: "/ba_overview_camera/image_raw/compressed"
     camera_info_topic: "/ba_overview_camera/camera_info"
-    request_topic: "/perception/detect_request"
-    pose_topic: "/perception/target_pose"
-    status_topic: "/perception/status"
+    request_topic: "/ba_perception/detect_request"
+    pose_topic: "/ba_perception/target_pose"
+    status_topic: "/ba_perception/status"
     depth_debug_topic: "/ba_overview_camera/depth/image_raw"
 
     # --- Depth Anything V2 ---
