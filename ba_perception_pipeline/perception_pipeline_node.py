@@ -72,7 +72,7 @@ class PerceptionPipelineNode(Node):
         # Rectification
         self.declare_parameter('rectify', True)
 
-        # Hand-eye transform (4x4 column-major, camera→robot)
+        # Hand-eye transform (4x4 row-major, camera→robot)
         self.declare_parameter('hand_eye_transform', [
             1.0, 0.0, 0.0, 0.0,
             0.0, 1.0, 0.0, 0.0,
@@ -121,7 +121,7 @@ class PerceptionPipelineNode(Node):
         self._debug_save_path = self.get_parameter('debug_save_path') \
             .get_parameter_value().string_value
 
-        # Hand-eye transform: 16 floats (column-major) → 4x4 matrix
+        # Hand-eye transform: 16 floats (row-major) → 4x4 matrix
         he_flat = self.get_parameter('hand_eye_transform') \
             .get_parameter_value().double_array_value
         self._T_robot_cam = np.array(he_flat, dtype=np.float64).reshape(4, 4)

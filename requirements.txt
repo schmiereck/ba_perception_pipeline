@@ -1,0 +1,18 @@
+# Core Math & Vision
+numpy
+opencv-python
+scipy
+pyyaml
+
+# VLM APIs
+groq
+google-genai
+
+# AI & Depth Estimation
+transformers
+pillow
+
+# PyTorch (CPU versions from specific index)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
