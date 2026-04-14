@@ -25,9 +25,11 @@ import numpy as np
 # ---------------------------------------------------------------------------
 _SYSTEM_PROMPT = (
     "You are a robotic vision assistant. The user will show you an image "
-    "and ask you to identify an object. Respond with ONLY the pixel "
-    "coordinates of the center of the requested object in the format: "
-    '{"u": <column>, "v": <row>}\n'
+    "and ask you to identify an object.\n"
+    "Locate the center of the requested object using normalized coordinates "
+    "where the top-left is [0, 0] and the bottom-right is [1000, 1000].\n"
+    "Respond ONLY with a JSON object in this format: "
+    '{"u": <0-1000>, "v": <0-1000>}\n'
     "Do not include any other text."
 )
 
@@ -197,6 +199,7 @@ class VLMClient:
         tuple[int, int]
             Pixel coordinates ``(u, v)`` of the target center.
         """
+        h, w = bgr.shape[:2]
         image_b64 = _encode_bgr_as_jpeg_b64(bgr)
         self._log(f'VLM query: "{prompt}" ({len(image_b64) // 1024} kB)')
 
@@ -204,6 +207,12 @@ class VLMClient:
             image_b64, prompt, self._model, self._api_key)
         self._log(f'VLM response: {raw_response!r}')
 
-        u, v = _parse_pixel_response(raw_response)
-        self._log(f'VLM target pixel: u={u}, v={v}')
+        # Parse normalized coordinates (0-1000)
+        u_norm, v_norm = _parse_pixel_response(raw_response)
+        
+        # Convert to actual pixels
+        u = int(u_norm * w / 1000.0)
+        v = int(v_norm * h / 1000.0)
+        
+        self._log(f'VLM normalized: ({u_norm}, {v_norm}) -> pixel: u={u}, v={v}')
         return u, v

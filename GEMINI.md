@@ -111,7 +111,8 @@ ros2 topic pub --once /ba_perception/detect_request std_msgs/String "data: 'the 
 - `scripts/calibrate_depth.py`: Interaktive Tiefenkalibrierung (relativ → metrisch).
 
 ## Roadmap / TODOs
-- [x] **Hand-Eye-Transform**: Matrix in `perception_pipeline.yaml` eingetragen.
-- [x] **Goal-Generator**: Basis-Implementierung für MoveIt-Ziele fertig.
-- [ ] **Echte MoveIt-Ansteuerung**: Action-Call im `goal_generator_node` vervollständigen.
-- [ ] **Tiefenkalibrierung**: Wiederholen, falls die Kamera physisch bewegt wurde.
+- [x] **Farbe & Tiefe**: Farbe im Stream aktiv, metrische Tiefe (RMSE 1.5cm) verifiziert.
+- [x] **Hand-Eye-Transform**: Matrix aktiv, liefert realistische Z-Werte (~0-10cm über Tisch).
+- [x] **Goal-Generator**: Sicherheitsbegrenzung (z_min) integriert.
+- [ ] **Feinjustierung**: VLM-Präzision optimieren (Marker-Offset beheben).
+- [ ] **Echte MoveIt-Ansteuerung**: Action-Call finalisieren.
