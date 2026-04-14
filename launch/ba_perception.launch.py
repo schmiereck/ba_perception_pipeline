@@ -9,7 +9,6 @@ def generate_launch_description():
     pkg_share = get_package_share_directory('ba_perception_pipeline')
 
     # --- venv handling (Auto-Fix for ModuleNotFoundError) ---
-    # Append the venv site-packages to the environment's PYTHONPATH.
     venv_site = os.path.expanduser('~/venvs/ba_depth_node/lib/python3.10/site-packages')
     env = os.environ.copy()
     if os.path.exists(venv_site):
@@ -19,9 +18,10 @@ def generate_launch_description():
         else:
             env['PYTHONPATH'] = venv_site
 
-    # Parameters
+    # --- Arguments ---
     config_file = LaunchConfiguration('config_file')
     depth_cal_file = LaunchConfiguration('depth_cal_file')
+    auto_execute = LaunchConfiguration('auto_execute')
 
     declare_config_file = DeclareLaunchArgument(
         'config_file',
@@ -35,6 +35,12 @@ def generate_launch_description():
         description='Full path to the depth calibration file'
     )
 
+    declare_auto_execute = DeclareLaunchArgument(
+        'auto_execute',
+        default_value='false',
+        description='If true, the robot will automatically move to the target'
+    )
+
     # 1. Perception Pipeline Node
     perception_node = Node(
         package='ba_perception_pipeline',
@@ -42,7 +48,7 @@ def generate_launch_description():
         name='ba_perception_pipeline',
         output='screen',
         parameters=[config_file, {'depth_calibration_file': depth_cal_file}],
-        env=env  # Use modified environment
+        env=env
     )
 
     # 2. Goal Generator Node
@@ -52,16 +58,18 @@ def generate_launch_description():
         name='ba_goal_generator',
         output='screen',
         parameters=[{
-            'planning_group': 'bracket_arm',
+            'planning_group': 'arm',
             'base_frame': 'base_link',
             'z_offset': 0.10,
+            'auto_execute': auto_execute,
         }],
-        env=env  # Use modified environment
+        env=env
     )
 
     ld = LaunchDescription()
     ld.add_action(declare_config_file)
     ld.add_action(declare_depth_cal_file)
+    ld.add_action(declare_auto_execute)
     ld.add_action(perception_node)
     ld.add_action(goal_node)
 
