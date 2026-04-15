@@ -26,8 +26,8 @@ class BAGoalGenerator(Node):
         # -- parameters --------------------------------------------------
         self.declare_parameter('planning_group', 'arm')
         self.declare_parameter('base_frame', 'base_link')
-        self.declare_parameter('z_offset', 0.10)  # 10 cm safety distance
-        self.declare_parameter('z_min', 0.0)      # Minimum safety height (table level)
+        self.declare_parameter('z_offset', 0.15)  # Increased to 15 cm for better clearance
+        self.declare_parameter('z_min', 0.05)     # 5cm above table as absolute minimum
         self.declare_parameter('auto_execute', False) # Execute immediately?
 
         self._group = self.get_parameter('planning_group').get_parameter_value().string_value
@@ -87,9 +87,9 @@ class BAGoalGenerator(Node):
         goal_msg = MoveGroup.Goal()
         goal_msg.request.group_name = self._group
         goal_msg.request.num_planning_attempts = 20
-        goal_msg.request.allowed_planning_time = 10.0
-        goal_msg.request.max_velocity_scaling_factor = 0.2
-        goal_msg.request.max_acceleration_scaling_factor = 0.2
+        goal_msg.request.allowed_planning_time = 20.0
+        goal_msg.request.max_velocity_scaling_factor = 0.1
+        goal_msg.request.max_acceleration_scaling_factor = 0.1
 
         # Define Workspace / Goal Constraints
         constraints = Constraints()
@@ -102,7 +102,7 @@ class BAGoalGenerator(Node):
         volume = BoundingVolume()
         primitive = SolidPrimitive()
         primitive.type = SolidPrimitive.SPHERE
-        primitive.dimensions = [0.05] # Loosen to 5cm tolerance for initial tests
+        primitive.dimensions = [0.05] # 5cm tolerance
         volume.primitives.append(primitive)
         volume.primitive_poses.append(pose.pose)
         
@@ -110,14 +110,14 @@ class BAGoalGenerator(Node):
         pos_con.weight = 1.0
         constraints.position_constraints.append(pos_con)
 
-        # Orientation Constraint
+        # Orientation Constraint - re-enable but with maximum freedom
         ori_con = OrientationConstraint()
         ori_con.header.frame_id = self._base_frame
         ori_con.link_name = 'tcp_link'
         ori_con.orientation = pose.pose.orientation
-        ori_con.absolute_x_axis_tolerance = 0.5 # Loosen orientation significantly
-        ori_con.absolute_y_axis_tolerance = 0.5
-        ori_con.absolute_z_axis_tolerance = 0.5
+        ori_con.absolute_x_axis_tolerance = 3.14 # Maximum freedom
+        ori_con.absolute_y_axis_tolerance = 3.14
+        ori_con.absolute_z_axis_tolerance = 3.14
         ori_con.weight = 1.0
         constraints.orientation_constraints.append(ori_con)
 

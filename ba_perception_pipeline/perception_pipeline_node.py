@@ -30,6 +30,8 @@ from rclpy.qos import (
     DurabilityPolicy,
     HistoryPolicy,
 )
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from geometry_msgs.msg import PoseStamped
 from sensor_msgs.msg import CameraInfo, CompressedImage, Image
 from std_msgs.msg import String
@@ -44,6 +46,8 @@ class PerceptionPipelineNode(Node):
 
     def __init__(self) -> None:
         super().__init__('perception_pipeline')
+
+        self._cb_group = ReentrantCallbackGroup()
 
         # -- parameters --------------------------------------------------
         self.declare_parameter('image_topic',
@@ -179,11 +183,12 @@ class PerceptionPipelineNode(Node):
         self._busy = False
         self._busy_lock = threading.Lock()
 
-        # -- publishers ---------------------------------------------------
+        # -- publishers --------------------------------------------------
         self._pose_pub = self.create_publisher(
-            PoseStamped, pose_topic, 10)
+            PoseStamped, pose_topic, 10, callback_group=self._cb_group)
         self._status_pub = self.create_publisher(
-            String, status_topic, 10)
+            String, status_topic, 10, callback_group=self._cb_group)
+
 
         depth_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -192,7 +197,7 @@ class PerceptionPipelineNode(Node):
             depth=1,
         )
         self._depth_pub = self.create_publisher(
-            Image, depth_debug_topic, depth_qos)
+            Image, depth_debug_topic, depth_qos, callback_group=self._cb_group)
 
         # -- subscribers --------------------------------------------------
         if self._rectify:
@@ -204,7 +209,7 @@ class PerceptionPipelineNode(Node):
             )
             self._camera_info_sub = self.create_subscription(
                 CameraInfo, camera_info_topic,
-                self._camera_info_cb, info_qos)
+                self._camera_info_cb, info_qos, callback_group=self._cb_group)
             self.get_logger().info(
                 f'Waiting for camera_info on {camera_info_topic} ...')
         else:
@@ -212,7 +217,7 @@ class PerceptionPipelineNode(Node):
 
         # Request trigger
         self._request_sub = self.create_subscription(
-            String, request_topic, self._request_cb, 10)
+            String, request_topic, self._request_cb, 10, callback_group=self._cb_group)
 
         # Store topic and QoS for on-demand image subscription
         self._image_topic = image_topic
@@ -300,7 +305,8 @@ class PerceptionPipelineNode(Node):
         
         # Temporary subscription
         sub = self.create_subscription(
-            CompressedImage, self._image_topic, self._image_cb, self._image_qos)
+            CompressedImage, self._image_topic, self._image_cb, self._image_qos,
+            callback_group=self._cb_group)
         
         # Wait for a frame (max 5 seconds)
         wait_start = time.time()
@@ -313,8 +319,6 @@ class PerceptionPipelineNode(Node):
                     frame_id = self._latest_frame_id
                     break
             time.sleep(0.05)
-            # Process callbacks to ensure image_cb is called
-            rclpy.spin_once(self, timeout_sec=0)
         
         self.destroy_subscription(sub)
 
@@ -466,8 +470,10 @@ class PerceptionPipelineNode(Node):
 def main(args=None) -> None:
     rclpy.init(args=args)
     node = PerceptionPipelineNode()
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:
