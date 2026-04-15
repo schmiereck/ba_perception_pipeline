@@ -195,15 +195,6 @@ class PerceptionPipelineNode(Node):
             Image, depth_debug_topic, depth_qos)
 
         # -- subscribers --------------------------------------------------
-        image_qos = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.VOLATILE,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=1,
-        )
-        self._image_sub = self.create_subscription(
-            CompressedImage, image_topic, self._image_cb, image_qos)
-
         if self._rectify:
             info_qos = QoSProfile(
                 reliability=ReliabilityPolicy.RELIABLE,
@@ -223,8 +214,17 @@ class PerceptionPipelineNode(Node):
         self._request_sub = self.create_subscription(
             String, request_topic, self._request_cb, 10)
 
+        # Store topic and QoS for on-demand image subscription
+        self._image_topic = image_topic
+        self._image_qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
+
         self.get_logger().info(
-            f'Perception pipeline ready. '
+            f'Perception pipeline ready (On-Demand image capture enabled). '
             f'Send a prompt to {request_topic} to trigger detection.')
 
     # -----------------------------------------------------------------
@@ -252,7 +252,7 @@ class PerceptionPipelineNode(Node):
             self._camera_info_sub = None
 
     # -----------------------------------------------------------------
-    # image callback → buffer latest frame
+    # image callback → buffer latest frame (used for on-demand capture)
     # -----------------------------------------------------------------
     def _image_cb(self, msg: CompressedImage) -> None:
         np_arr = np.frombuffer(msg.data, np.uint8)
@@ -292,14 +292,34 @@ class PerceptionPipelineNode(Node):
     def _run_pipeline(self, prompt: str) -> None:
         t0 = time.perf_counter()
 
-        # 1. Grab latest frame -------------------------------------------
+        # 1. Grab frame (On-Demand) --------------------------------------
+        self.get_logger().info(f'Capturing image from {self._image_topic}...')
+        
         with self._frame_lock:
-            bgr = self._latest_bgr
-            stamp = self._latest_stamp
-            frame_id = self._latest_frame_id
+            self._latest_bgr = None  # Reset buffer
+        
+        # Temporary subscription
+        sub = self.create_subscription(
+            CompressedImage, self._image_topic, self._image_cb, self._image_qos)
+        
+        # Wait for a frame (max 5 seconds)
+        wait_start = time.time()
+        bgr = None
+        while time.time() - wait_start < 5.0:
+            with self._frame_lock:
+                if self._latest_bgr is not None:
+                    bgr = self._latest_bgr
+                    stamp = self._latest_stamp
+                    frame_id = self._latest_frame_id
+                    break
+            time.sleep(0.05)
+            # Process callbacks to ensure image_cb is called
+            rclpy.spin_once(self, timeout_sec=0)
+        
+        self.destroy_subscription(sub)
 
         if bgr is None:
-            self._publish_status('ERROR: no camera frame received yet')
+            self._publish_status('ERROR: timeout waiting for camera frame')
             return
 
         # Check for color
