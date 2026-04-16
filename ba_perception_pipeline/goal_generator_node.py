@@ -87,40 +87,49 @@ class BAGoalGenerator(Node):
         goal_msg = MoveGroup.Goal()
         goal_msg.request.group_name = self._group
         goal_msg.request.num_planning_attempts = 50
-        goal_msg.request.allowed_planning_time = 10.0
+        goal_msg.request.allowed_planning_time = 20.0
         goal_msg.request.max_velocity_scaling_factor = 0.1
         goal_msg.request.max_acceleration_scaling_factor = 0.1
 
-        # Direct Position Target only (No Orientation Constraint)
-        from moveit_msgs.msg import Constraints, PositionConstraint
+        # Direct Position Target (BOX instead of Sphere for better OMPL sampling)
+        from moveit_msgs.msg import Constraints, PositionConstraint, OrientationConstraint
         
         constraints = Constraints()
-        constraints.name = "goal_position"
+        constraints.name = "goal_pose"
         
-        # Position with 2cm tolerance
+        # Position with 2cm Sphere tolerance
         pos_con = PositionConstraint()
-        pos_con.header = pose.header
+        pos_con.header.frame_id = self._base_frame
+        pos_con.header.stamp = self.get_clock().now().to_msg()
         pos_con.link_name = 'tcp_link'
         
         volume = BoundingVolume()
         primitive = SolidPrimitive()
         primitive.type = SolidPrimitive.SPHERE
-        primitive.dimensions = [0.02] # 2cm radius tolerance
+        primitive.dimensions = [0.02] # 2cm radius
         volume.primitives.append(primitive)
         volume.primitive_poses.append(pose.pose)
         pos_con.constraint_region = volume
         pos_con.weight = 1.0
         constraints.position_constraints.append(pos_con)
 
-        # We leave constraints.orientation_constraints EMPTY
-        # This allows MoveIt to find ANY orientation that reaches the point.
+        # Orientation: use the provided orientation with 0.1 rad tolerance
+        ori_con = OrientationConstraint()
+        ori_con.header = pos_con.header
+        ori_con.link_name = 'tcp_link'
+        ori_con.orientation = pose.pose.orientation
+        ori_con.absolute_x_axis_tolerance = 0.1
+        ori_con.absolute_y_axis_tolerance = 0.1
+        ori_con.absolute_z_axis_tolerance = 0.1
+        ori_con.weight = 1.0
+        constraints.orientation_constraints.append(ori_con)
 
         goal_msg.request.goal_constraints.append(constraints)
         
         # We want MoveIt to plan AND execute
         goal_msg.planning_options.plan_only = False
 
-        self.get_logger().info(f'Sending POSITION-ONLY goal at X={pose.pose.position.x:.3f}, Y={pose.pose.position.y:.3f}, Z={pose.pose.position.z:.3f}...')
+        self.get_logger().info(f'Sending goal (BOX 5cm, Loose Orientation) at X={pose.pose.position.x:.3f}, Z={pose.pose.position.z:.3f}...')
         self._action_client.send_goal_async(goal_msg)
 
 def main(args=None):
