@@ -34,6 +34,13 @@ Camera (Pi) ──► perception_pipeline_node (WSL2)
 - `ba_arduino_controller`: Arduino-side arm control.
 - `ba_arduino_controller_moveit_config`: MoveIt configuration for the arm.
 
+Absolute paths to related Projects:
+- C:\Users\thomas\Projekte\BAArduinoController\ 
+- C:\Users\thomas\Projekte\ba_arduino_controller_moveit_config\
+- C:\Users\thomas\Projekte\ba_camera_bridge\ 
+- C:\Users\thomas\Projekte\ba_depth_node\ 
+- C:\Users\thomas\Projekte\ba_perception_pipeline\ 
+
 ## Directory Structure
 - `ba_perception_pipeline/`: Main source code.
   - `perception_pipeline_node.py`: Orchestrator node.
