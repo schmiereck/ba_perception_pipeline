@@ -26,8 +26,8 @@ class BAGoalGenerator(Node):
         # -- parameters --------------------------------------------------
         self.declare_parameter('planning_group', 'arm')
         self.declare_parameter('base_frame', 'base_link')
-        self.declare_parameter('z_offset', 0.15)  # Increased to 15 cm for better clearance
-        self.declare_parameter('z_min', 0.05)     # 5cm above table as absolute minimum
+        self.declare_parameter('z_offset', 0.05)  # Back to 5cm for testing reachability
+        self.declare_parameter('z_min', 0.02)     # 2cm above table
         self.declare_parameter('auto_execute', False) # Execute immediately?
 
         self._group = self.get_parameter('planning_group').get_parameter_value().string_value
@@ -65,12 +65,12 @@ class BAGoalGenerator(Node):
         goal_pose = msg
         goal_pose.pose.position.z = target_z
         
-        # 3. Set Orientation: Gripper pointing DOWN
-        # Quaternion for 90 deg rotation around Y axis
+        # 3. Set Orientation: Gripper horizontal (forward) instead of pointing DOWN
+        # This matches the home position better and avoids self-collisions during planning.
         goal_pose.pose.orientation.x = 0.0
-        goal_pose.pose.orientation.y = 0.7071
+        goal_pose.pose.orientation.y = 0.0
         goal_pose.pose.orientation.z = 0.0
-        goal_pose.pose.orientation.w = 0.7071
+        goal_pose.pose.orientation.w = 1.0
 
         self.get_logger().info(f'Calculated Pre-Grasp Pose: Z={goal_pose.pose.position.z:.3f}')
         
@@ -86,47 +86,41 @@ class BAGoalGenerator(Node):
 
         goal_msg = MoveGroup.Goal()
         goal_msg.request.group_name = self._group
-        goal_msg.request.num_planning_attempts = 20
-        goal_msg.request.allowed_planning_time = 20.0
+        goal_msg.request.num_planning_attempts = 50
+        goal_msg.request.allowed_planning_time = 10.0
         goal_msg.request.max_velocity_scaling_factor = 0.1
         goal_msg.request.max_acceleration_scaling_factor = 0.1
 
-        # Define Workspace / Goal Constraints
-        constraints = Constraints()
+        # Direct Position Target only (No Orientation Constraint)
+        from moveit_msgs.msg import Constraints, PositionConstraint
         
-        # Position Constraint
+        constraints = Constraints()
+        constraints.name = "goal_position"
+        
+        # Position with 2cm tolerance
         pos_con = PositionConstraint()
-        pos_con.header.frame_id = self._base_frame
+        pos_con.header = pose.header
         pos_con.link_name = 'tcp_link'
         
         volume = BoundingVolume()
         primitive = SolidPrimitive()
         primitive.type = SolidPrimitive.SPHERE
-        primitive.dimensions = [0.05] # 5cm tolerance
+        primitive.dimensions = [0.02] # 2cm radius tolerance
         volume.primitives.append(primitive)
         volume.primitive_poses.append(pose.pose)
-        
         pos_con.constraint_region = volume
         pos_con.weight = 1.0
         constraints.position_constraints.append(pos_con)
 
-        # Orientation Constraint - re-enable but with maximum freedom
-        ori_con = OrientationConstraint()
-        ori_con.header.frame_id = self._base_frame
-        ori_con.link_name = 'tcp_link'
-        ori_con.orientation = pose.pose.orientation
-        ori_con.absolute_x_axis_tolerance = 3.14 # Maximum freedom
-        ori_con.absolute_y_axis_tolerance = 3.14
-        ori_con.absolute_z_axis_tolerance = 3.14
-        ori_con.weight = 1.0
-        constraints.orientation_constraints.append(ori_con)
+        # We leave constraints.orientation_constraints EMPTY
+        # This allows MoveIt to find ANY orientation that reaches the point.
 
         goal_msg.request.goal_constraints.append(constraints)
         
         # We want MoveIt to plan AND execute
         goal_msg.planning_options.plan_only = False
 
-        self.get_logger().info(f'Sending goal to MoveIt for link "tcp_link"...')
+        self.get_logger().info(f'Sending POSITION-ONLY goal at X={pose.pose.position.x:.3f}, Y={pose.pose.position.y:.3f}, Z={pose.pose.position.z:.3f}...')
         self._action_client.send_goal_async(goal_msg)
 
 def main(args=None):
