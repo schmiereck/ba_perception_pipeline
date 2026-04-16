@@ -13,7 +13,8 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from geometry_msgs.msg import PoseStamped, Quaternion
 from moveit_msgs.action import MoveGroup
-from moveit_msgs.msg import Constraints, PositionConstraint, OrientationConstraint, JointConstraint, BoundingVolume
+from moveit_msgs.msg import Constraints, PositionConstraint, OrientationConstraint, JointConstraint, BoundingVolume, RobotState
+from sensor_msgs.msg import JointState
 from shape_msgs.msg import SolidPrimitive
 import math
 import numpy as np
@@ -22,6 +23,9 @@ import numpy as np
 class BAGoalGenerator(Node):
     def __init__(self):
         super().__init__('ba_goal_generator')
+
+        # -- state tracking ----------------------------------------------
+        self._last_joint_state = None
 
         # -- parameters --------------------------------------------------
         self.declare_parameter('planning_group', 'arm')
@@ -47,7 +51,16 @@ class BAGoalGenerator(Node):
             self._target_cb,
             10)
 
+        self._joint_sub = self.create_subscription(
+            JointState,
+            '/joint_states',
+            self._joint_cb,
+            10)
+
         self.get_logger().info(f'BA Goal Generator ready. Group: {self._group}')
+...
+    def _joint_cb(self, msg: JointState):
+        self._last_joint_state = msg
         self.get_logger().info(f'Safety: z_min={self._z_min}m, z_offset={self._z_offset}m')
         self.get_logger().info(f'Auto-Execute: {self._auto_execute}')
 
@@ -91,7 +104,16 @@ class BAGoalGenerator(Node):
         goal_msg.request.max_velocity_scaling_factor = 0.1
         goal_msg.request.max_acceleration_scaling_factor = 0.1
 
-        # Direct Position Target (BOX instead of Sphere for better OMPL sampling)
+        # 1. Provide the Start State explicitly to avoid "recent timestamp" errors
+        if self._last_joint_state:
+            goal_msg.request.start_state.joint_state = self._last_joint_state
+            # Force MoveIt to use this state as the absolute starting point
+            goal_msg.request.start_state.is_diff = False
+            self.get_logger().info('Using explicit Start State for planning.')
+        else:
+            self.get_logger().warn('No joint states received yet. Planning from MoveIt default.')
+
+        # 2. Constraints
         from moveit_msgs.msg import Constraints, PositionConstraint, OrientationConstraint
         
         constraints = Constraints()
@@ -113,14 +135,14 @@ class BAGoalGenerator(Node):
         pos_con.weight = 1.0
         constraints.position_constraints.append(pos_con)
 
-        # Orientation: use the provided orientation with 0.1 rad tolerance
+        # Orientation
         ori_con = OrientationConstraint()
         ori_con.header = pos_con.header
         ori_con.link_name = 'tcp_link'
         ori_con.orientation = pose.pose.orientation
-        ori_con.absolute_x_axis_tolerance = 0.1
-        ori_con.absolute_y_axis_tolerance = 0.1
-        ori_con.absolute_z_axis_tolerance = 0.1
+        ori_con.absolute_x_axis_tolerance = 0.5 # Loosen for better sampling
+        ori_con.absolute_y_axis_tolerance = 0.5
+        ori_con.absolute_z_axis_tolerance = 3.14
         ori_con.weight = 1.0
         constraints.orientation_constraints.append(ori_con)
 
@@ -129,7 +151,7 @@ class BAGoalGenerator(Node):
         # We want MoveIt to plan AND execute
         goal_msg.planning_options.plan_only = False
 
-        self.get_logger().info(f'Sending goal (BOX 5cm, Loose Orientation) at X={pose.pose.position.x:.3f}, Z={pose.pose.position.z:.3f}...')
+        self.get_logger().info(f'Sending goal to MoveIt for link "tcp_link" at X={pose.pose.position.x:.3f}, Z={pose.pose.position.z:.3f}...')
         self._action_client.send_goal_async(goal_msg)
 
 def main(args=None):
