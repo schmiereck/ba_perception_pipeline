@@ -50,6 +50,13 @@ MoveIt / Goal-Generator
 - `config/perception_pipeline.yaml` — all parameters
 - `launch/perception_pipeline.launch.py` — launch file
 
+Absolute paths to related Projects:
+- C:\Users\thomas\Projekte\BAArduinoController\ 
+- C:\Users\thomas\Projekte\ba_arduino_controller_moveit_config\
+- C:\Users\thomas\Projekte\ba_camera_bridge\ 
+- C:\Users\thomas\Projekte\ba_depth_node\ 
+- C:\Users\thomas\Projekte\ba_perception_pipeline\ 
+
 ### Topic Contract
 
 | Topic | Type | Direction |
