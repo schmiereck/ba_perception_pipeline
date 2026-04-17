@@ -35,6 +35,7 @@ class BAGoalGenerator(Node):
         self.declare_parameter('tip_link', 'tcp_link')
         self.declare_parameter('z_offset', 0.05)
         self.declare_parameter('z_min', 0.02)
+        self.declare_parameter('max_reach', 0.25)  # safe horizontal reach from origin
         self.declare_parameter('auto_execute', False)
         self.declare_parameter('ik_timeout_sec', 1.0)
         self.declare_parameter('planning_time_sec', 10.0)
@@ -45,6 +46,7 @@ class BAGoalGenerator(Node):
         self._tip_link = self.get_parameter('tip_link').value
         self._z_offset = self.get_parameter('z_offset').value
         self._z_min = self.get_parameter('z_min').value
+        self._max_reach = self.get_parameter('max_reach').value
         self._auto_execute = self.get_parameter('auto_execute').value
         self._ik_timeout = self.get_parameter('ik_timeout_sec').value
         self._plan_time = self.get_parameter('planning_time_sec').value
@@ -89,26 +91,26 @@ class BAGoalGenerator(Node):
             target_z = self._z_min
         goal_pose.pose.position.z = target_z
 
+        radial = (goal_pose.pose.position.x ** 2 + goal_pose.pose.position.y ** 2) ** 0.5
+        if radial > self._max_reach:
+            self.get_logger().error(
+                f'Target out of reach: radial={radial:.3f}m > max_reach={self._max_reach}m. '
+                'Check perception calibration (depth / hand-eye). Skipping goal.')
+            return
+
         # Orientation is ignored by pick_ik (rotation_scale=0.0). Any value works
         # as a seed; identity keeps things readable.
         goal_pose.pose.orientation.w = 1.0
 
         self.get_logger().info(f'Pre-Grasp Pose: Z={goal_pose.pose.position.z:.3f}')
 
-        joint_solution = self._compute_ik(goal_pose)
-        if joint_solution is None:
-            self.get_logger().error('IK failed — target unreachable; skipping goal.')
-            return
+        self._request_ik(goal_pose)
 
-        if self._auto_execute:
-            self._send_joint_goal(joint_solution)
-        else:
-            self.get_logger().info('Auto-Execute OFF. Set -p auto_execute:=true to enable.')
-
-    def _compute_ik(self, pose: PoseStamped):
+    def _request_ik(self, pose: PoseStamped):
+        """Fire async IK request; result is handled in _on_ik_done."""
         if not self._ik_client.wait_for_service(timeout_sec=2.0):
             self.get_logger().error('/compute_ik service not available.')
-            return None
+            return
 
         req = GetPositionIK.Request()
         req.ik_request.group_name = self._group
@@ -123,20 +125,32 @@ class BAGoalGenerator(Node):
             req.ik_request.robot_state.joint_state = self._last_joint_state
 
         future = self._ik_client.call_async(req)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
-        if future.result() is None:
-            self.get_logger().error('IK service call timed out.')
-            return None
+        future.add_done_callback(self._on_ik_done)
 
-        result = future.result()
+    def _on_ik_done(self, future):
+        try:
+            result = future.result()
+        except Exception as exc:
+            self.get_logger().error(f'IK service call failed: {exc}')
+            return
+
+        if result is None:
+            self.get_logger().error('IK service returned None.')
+            return
+
         if result.error_code.val != 1:
-            self.get_logger().warn(f'IK error_code={result.error_code.val}')
-            return None
+            self.get_logger().warn(
+                f'IK failed: error_code={result.error_code.val} — target unreachable.')
+            return
 
         js = result.solution.joint_state
         joint_log = ', '.join(f'{n}={p:.3f}' for n, p in zip(js.name, js.position))
         self.get_logger().info(f'IK solution: {joint_log}')
-        return js
+
+        if self._auto_execute:
+            self._send_joint_goal(js)
+        else:
+            self.get_logger().info('Auto-Execute OFF. Set -p auto_execute:=true to enable.')
 
     def _send_joint_goal(self, joint_state: JointState):
         if not self._action_client.wait_for_server(timeout_sec=2.0):
