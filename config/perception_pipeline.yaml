@@ -31,9 +31,14 @@
     # 4x4 matrix (row-major) mapping camera frame → robot base frame.
     # Identity = no transform (camera = robot frame).
     # Replace with calibrated values.
+    # NOTE: This matrix has been post-composed with R_z(+90°) on the LEFT
+    # to rotate from the physical user-frame (used during ruler-based
+    # calibration: +X = physical forward) to the URDF base_link frame
+    # (URDF +Y = physical forward, since the robot is mounted such that
+    # joint_0 = π/2 with joint_1 folded forward reaches physical +X).
     hand_eye_transform: [
+       0.00000, -0.90546,  0.42443, -0.15000,
       -1.00000,  0.00000,  0.00000,  0.17000,
-      -0.00000,  0.90546, -0.42443,  0.15000,
        0.00000, -0.42443, -0.90546,  0.32000,
        0.00000,  0.00000,  0.00000,  1.00000,
     ]
