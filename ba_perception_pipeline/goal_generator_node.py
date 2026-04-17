@@ -40,6 +40,8 @@ class BAGoalGenerator(Node):
         self.declare_parameter('ik_timeout_sec', 1.0)
         self.declare_parameter('planning_time_sec', 10.0)
         self.declare_parameter('joint_tolerance', 0.01)
+        self.declare_parameter('velocity_scaling', 0.3)
+        self.declare_parameter('acceleration_scaling', 0.3)
 
         self._group = self.get_parameter('planning_group').value
         self._base_frame = self.get_parameter('base_frame').value
@@ -51,6 +53,8 @@ class BAGoalGenerator(Node):
         self._ik_timeout = self.get_parameter('ik_timeout_sec').value
         self._plan_time = self.get_parameter('planning_time_sec').value
         self._joint_tol = self.get_parameter('joint_tolerance').value
+        self._vel_scale = self.get_parameter('velocity_scaling').value
+        self._acc_scale = self.get_parameter('acceleration_scaling').value
 
         self._action_client = ActionClient(self, MoveGroup, 'move_action')
         self._ik_client = self.create_client(GetPositionIK, '/compute_ik')
@@ -176,8 +180,8 @@ class BAGoalGenerator(Node):
         goal_msg.request.group_name = self._group
         goal_msg.request.num_planning_attempts = 10
         goal_msg.request.allowed_planning_time = self._plan_time
-        goal_msg.request.max_velocity_scaling_factor = 0.1
-        goal_msg.request.max_acceleration_scaling_factor = 0.1
+        goal_msg.request.max_velocity_scaling_factor = self._vel_scale
+        goal_msg.request.max_acceleration_scaling_factor = self._acc_scale
         goal_msg.request.goal_constraints.append(constraints)
 
         if self._last_joint_state is not None:

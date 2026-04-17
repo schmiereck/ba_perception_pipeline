@@ -48,6 +48,21 @@ def generate_launch_description():
         description='Ray-plane intersection Z in robot frame (meters). VLM empirically latches on object bottom edge at steep angles.'
     )
 
+    velocity_scaling = LaunchConfiguration('velocity_scaling')
+    acceleration_scaling = LaunchConfiguration('acceleration_scaling')
+
+    declare_velocity_scaling = DeclareLaunchArgument(
+        'velocity_scaling',
+        default_value='0.3',
+        description='MoveGroup max_velocity_scaling_factor (0.0-1.0). RViz equivalent: "Velocity Scaling".'
+    )
+
+    declare_acceleration_scaling = DeclareLaunchArgument(
+        'acceleration_scaling',
+        default_value='0.3',
+        description='MoveGroup max_acceleration_scaling_factor (0.0-1.0). RViz equivalent: "Accel. Scaling".'
+    )
+
     # 1. Perception Pipeline Node
     perception_node = Node(
         package='ba_perception_pipeline',
@@ -75,6 +90,8 @@ def generate_launch_description():
             'z_offset': 0.0,
             'max_reach': 0.35,
             'auto_execute': auto_execute,
+            'velocity_scaling': PythonExpression(['float("', velocity_scaling, '")']),
+            'acceleration_scaling': PythonExpression(['float("', acceleration_scaling, '")']),
         }],
         env=env
     )
@@ -84,6 +101,8 @@ def generate_launch_description():
     ld.add_action(declare_depth_cal_file)
     ld.add_action(declare_auto_execute)
     ld.add_action(declare_target_plane_z)
+    ld.add_action(declare_velocity_scaling)
+    ld.add_action(declare_acceleration_scaling)
     ld.add_action(perception_node)
     ld.add_action(goal_node)
 
