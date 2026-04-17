@@ -83,12 +83,13 @@ class BAGoalGenerator(Node):
 
         goal_pose.pose.position.z = target_z
         
-        # 3. Set Orientation: Gripper horizontal (forward)
-        # identity orientation (0,0,0,1)
+        # 3. Set Orientation: Gripper horizontal, TCP-Z along +X_base.
+        # Kinematic chain rotates TCP-Z to +X_base when all joints = 0, so
+        # "point forward" requires rotating −90° about Y relative to base.
         goal_pose.pose.orientation.x = 0.0
-        goal_pose.pose.orientation.y = 0.0
+        goal_pose.pose.orientation.y = -0.7071068
         goal_pose.pose.orientation.z = 0.0
-        goal_pose.pose.orientation.w = 1.0
+        goal_pose.pose.orientation.w = 0.7071068
 
         self.get_logger().info(f'Calculated Pre-Grasp Pose: Z={goal_pose.pose.position.z:.3f}')
         
