@@ -58,6 +58,8 @@ class PerceptionPipelineNode(Node):
                                '/ba_perception/detect_request')
         self.declare_parameter('pose_topic',
                                '/ba_perception/target_pose')
+        self.declare_parameter('pose_cam_topic',
+                               '/ba_perception/target_pose_cam')
         self.declare_parameter('status_topic',
                                '/ba_perception/status')
         self.declare_parameter('depth_debug_topic',
@@ -98,6 +100,8 @@ class PerceptionPipelineNode(Node):
         request_topic = self.get_parameter('request_topic') \
             .get_parameter_value().string_value
         pose_topic = self.get_parameter('pose_topic') \
+            .get_parameter_value().string_value
+        pose_cam_topic = self.get_parameter('pose_cam_topic') \
             .get_parameter_value().string_value
         status_topic = self.get_parameter('status_topic') \
             .get_parameter_value().string_value
@@ -186,6 +190,8 @@ class PerceptionPipelineNode(Node):
         # -- publishers --------------------------------------------------
         self._pose_pub = self.create_publisher(
             PoseStamped, pose_topic, 10, callback_group=self._cb_group)
+        self._pose_cam_pub = self.create_publisher(
+            PoseStamped, pose_cam_topic, 10, callback_group=self._cb_group)
         self._status_pub = self.create_publisher(
             String, status_topic, 10, callback_group=self._cb_group)
 
@@ -385,6 +391,15 @@ class PerceptionPipelineNode(Node):
         point_cam = backproject(u, v, Z, self._K)
         self.get_logger().info(
             f'Backprojection: camera frame [{point_cam[0]:.4f}, {point_cam[1]:.4f}, {point_cam[2]:.4f}]')
+
+        pose_cam_msg = PoseStamped()
+        pose_cam_msg.header.stamp = stamp
+        pose_cam_msg.header.frame_id = frame_id or 'camera_optical_frame'
+        pose_cam_msg.pose.position.x = float(point_cam[0])
+        pose_cam_msg.pose.position.y = float(point_cam[1])
+        pose_cam_msg.pose.position.z = float(point_cam[2])
+        pose_cam_msg.pose.orientation.w = 1.0
+        self._pose_cam_pub.publish(pose_cam_msg)
 
         # 6. Hand-eye transform → robot frame ----------------------------
         point_cam_h = np.append(point_cam, 1.0)

@@ -8,6 +8,7 @@
     camera_info_topic: "/ba_overview_camera/camera_info"
     request_topic: "/ba_perception/detect_request"
     pose_topic: "/ba_perception/target_pose"
+    pose_cam_topic: "/ba_perception/target_pose_cam"
     status_topic: "/ba_perception/status"
     depth_debug_topic: "/ba_overview_camera/depth/image_raw"
 
