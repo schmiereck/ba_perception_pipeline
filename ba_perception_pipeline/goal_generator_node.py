@@ -4,46 +4,55 @@
 Listens for 3D target points from the perception pipeline and sends
 move commands to MoveIt.
 
+The arm is 5-DOF, so arbitrary 6D pose-goals are infeasible. We call
+/compute_ik first (pick_ik with rotation_scale=0.0 picks any feasible
+orientation at the target position) and then send JointConstraints —
+the same pattern RViz uses internally.
+
 Subscribe: /ba_perception/target_pose (geometry_msgs/PoseStamped)
+Service:   /compute_ik (moveit_msgs/srv/GetPositionIK)
 Action:    /move_action (moveit_msgs/action/MoveGroup)
 """
 
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
-from geometry_msgs.msg import PoseStamped, Quaternion
+from geometry_msgs.msg import PoseStamped
 from moveit_msgs.action import MoveGroup
-from moveit_msgs.msg import Constraints, PositionConstraint, OrientationConstraint, JointConstraint, BoundingVolume, RobotState
+from moveit_msgs.msg import Constraints, JointConstraint
+from moveit_msgs.srv import GetPositionIK
 from sensor_msgs.msg import JointState
-from shape_msgs.msg import SolidPrimitive
-import math
-import numpy as np
 
 
 class BAGoalGenerator(Node):
     def __init__(self):
         super().__init__('ba_goal_generator')
 
-        # -- state tracking ----------------------------------------------
         self._last_joint_state = None
 
-        # -- parameters --------------------------------------------------
         self.declare_parameter('planning_group', 'arm')
         self.declare_parameter('base_frame', 'base_link')
+        self.declare_parameter('tip_link', 'tcp_link')
         self.declare_parameter('z_offset', 0.05)
         self.declare_parameter('z_min', 0.02)
         self.declare_parameter('auto_execute', False)
+        self.declare_parameter('ik_timeout_sec', 1.0)
+        self.declare_parameter('planning_time_sec', 10.0)
+        self.declare_parameter('joint_tolerance', 0.01)
 
-        self._group = self.get_parameter('planning_group').get_parameter_value().string_value
-        self._base_frame = self.get_parameter('base_frame').get_parameter_value().string_value
-        self._z_offset = self.get_parameter('z_offset').get_parameter_value().double_value
-        self._z_min = self.get_parameter('z_min').get_parameter_value().double_value
-        self._auto_execute = self.get_parameter('auto_execute').get_parameter_value().bool_value
+        self._group = self.get_parameter('planning_group').value
+        self._base_frame = self.get_parameter('base_frame').value
+        self._tip_link = self.get_parameter('tip_link').value
+        self._z_offset = self.get_parameter('z_offset').value
+        self._z_min = self.get_parameter('z_min').value
+        self._auto_execute = self.get_parameter('auto_execute').value
+        self._ik_timeout = self.get_parameter('ik_timeout_sec').value
+        self._plan_time = self.get_parameter('planning_time_sec').value
+        self._joint_tol = self.get_parameter('joint_tolerance').value
 
-        # -- Action Client for MoveIt -------------------------------------
         self._action_client = ActionClient(self, MoveGroup, 'move_action')
+        self._ik_client = self.create_client(GetPositionIK, '/compute_ik')
 
-        # -- Subscribers --------------------------------------------------
         self._sub = self.create_subscription(
             PoseStamped,
             '/ba_perception/target_pose',
@@ -61,104 +70,111 @@ class BAGoalGenerator(Node):
         self.get_logger().info(f'Auto-Execute: {self._auto_execute}')
 
     def _joint_cb(self, msg: JointState):
-        """Store the latest joint positions from the robot."""
         self._last_joint_state = msg
 
     def _target_cb(self, msg: PoseStamped):
-        """Handle incoming 3D target points."""
-        self.get_logger().info(f'Received target: X={msg.pose.position.x:.3f}, Y={msg.pose.position.y:.3f}, Z={msg.pose.position.z:.3f}')
-        
-        # 1. Create target pose with offset (deep copy by creating a new message)
+        self.get_logger().info(
+            f'Received target: X={msg.pose.position.x:.3f}, '
+            f'Y={msg.pose.position.y:.3f}, Z={msg.pose.position.z:.3f}')
+
         goal_pose = PoseStamped()
-        goal_pose.header = msg.header
+        goal_pose.header.frame_id = self._base_frame
         goal_pose.pose.position.x = msg.pose.position.x
         goal_pose.pose.position.y = msg.pose.position.y
-        
+
         target_z = msg.pose.position.z + self._z_offset
-        
-        # 2. Safety Check: Don't go below z_min
         if target_z < self._z_min:
-            self.get_logger().warn(f'Target Z ({target_z:.3f}m) is below safety limit ({self._z_min}m). Clipping!')
+            self.get_logger().warn(
+                f'Target Z ({target_z:.3f}m) below safety limit ({self._z_min}m). Clipping.')
             target_z = self._z_min
-
         goal_pose.pose.position.z = target_z
-        
-        # 3. Set Orientation: Gripper horizontal, TCP-Z along +X_base.
-        # Kinematic chain rotates TCP-Z to +X_base when all joints = 0, so
-        # "point forward" requires rotating −90° about Y relative to base.
-        goal_pose.pose.orientation.x = 0.0
-        goal_pose.pose.orientation.y = -0.7071068
-        goal_pose.pose.orientation.z = 0.0
-        goal_pose.pose.orientation.w = 0.7071068
 
-        self.get_logger().info(f'Calculated Pre-Grasp Pose: Z={goal_pose.pose.position.z:.3f}')
-        
-        if self._auto_execute:
-            self._send_goal(goal_pose)
-        else:
-            self.get_logger().info('Auto-Execute is OFF. Use --ros-args -p auto_execute:=true to enable.')
+        # Orientation is ignored by pick_ik (rotation_scale=0.0). Any value works
+        # as a seed; identity keeps things readable.
+        goal_pose.pose.orientation.w = 1.0
 
-    def _send_goal(self, pose: PoseStamped):
-        """Send the plan & execute request to MoveIt."""
-        if not self._action_client.wait_for_server(timeout_sec=2.0):
-            self.get_logger().error('MoveIt Action Server (move_action) not available!')
+        self.get_logger().info(f'Pre-Grasp Pose: Z={goal_pose.pose.position.z:.3f}')
+
+        joint_solution = self._compute_ik(goal_pose)
+        if joint_solution is None:
+            self.get_logger().error('IK failed — target unreachable; skipping goal.')
             return
+
+        if self._auto_execute:
+            self._send_joint_goal(joint_solution)
+        else:
+            self.get_logger().info('Auto-Execute OFF. Set -p auto_execute:=true to enable.')
+
+    def _compute_ik(self, pose: PoseStamped):
+        if not self._ik_client.wait_for_service(timeout_sec=2.0):
+            self.get_logger().error('/compute_ik service not available.')
+            return None
+
+        req = GetPositionIK.Request()
+        req.ik_request.group_name = self._group
+        req.ik_request.ik_link_name = self._tip_link
+        req.ik_request.pose_stamped = pose
+        req.ik_request.avoid_collisions = True
+        req.ik_request.timeout.sec = int(self._ik_timeout)
+        req.ik_request.timeout.nanosec = int(
+            (self._ik_timeout - int(self._ik_timeout)) * 1e9)
+
+        if self._last_joint_state is not None:
+            req.ik_request.robot_state.joint_state = self._last_joint_state
+
+        future = self._ik_client.call_async(req)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+        if future.result() is None:
+            self.get_logger().error('IK service call timed out.')
+            return None
+
+        result = future.result()
+        if result.error_code.val != 1:
+            self.get_logger().warn(f'IK error_code={result.error_code.val}')
+            return None
+
+        js = result.solution.joint_state
+        joint_log = ', '.join(f'{n}={p:.3f}' for n, p in zip(js.name, js.position))
+        self.get_logger().info(f'IK solution: {joint_log}')
+        return js
+
+    def _send_joint_goal(self, joint_state: JointState):
+        if not self._action_client.wait_for_server(timeout_sec=2.0):
+            self.get_logger().error('MoveIt Action Server (move_action) not available.')
+            return
+
+        constraints = Constraints()
+        constraints.name = 'ik_joint_goal'
+        for name, pos in zip(joint_state.name, joint_state.position):
+            if not name.startswith('joint_'):
+                continue
+            if name in ('joint_5', 'joint_5_mimic'):
+                continue  # gripper not part of arm group
+            jc = JointConstraint()
+            jc.joint_name = name
+            jc.position = pos
+            jc.tolerance_above = self._joint_tol
+            jc.tolerance_below = self._joint_tol
+            jc.weight = 1.0
+            constraints.joint_constraints.append(jc)
 
         goal_msg = MoveGroup.Goal()
         goal_msg.request.group_name = self._group
-        goal_msg.request.num_planning_attempts = 50
-        goal_msg.request.allowed_planning_time = 20.0
+        goal_msg.request.num_planning_attempts = 10
+        goal_msg.request.allowed_planning_time = self._plan_time
         goal_msg.request.max_velocity_scaling_factor = 0.1
         goal_msg.request.max_acceleration_scaling_factor = 0.1
+        goal_msg.request.goal_constraints.append(constraints)
 
-        # 1. Provide the Start State explicitly
-        if self._last_joint_state:
+        if self._last_joint_state is not None:
             goal_msg.request.start_state.joint_state = self._last_joint_state
             goal_msg.request.start_state.is_diff = False
-            self.get_logger().info('Using explicit Start State from /joint_states.')
-        else:
-            self.get_logger().warn('No joint states received yet. MoveIt will use its monitored state.')
 
-        # 2. Build Constraints
-        constraints = Constraints()
-        constraints.name = "goal_pose"
-        
-        # Position Constraint (2cm Sphere)
-        pos_con = PositionConstraint()
-        pos_con.header.frame_id = self._base_frame
-        # Use zero timestamp to avoid clock sync issues in WSL2
-        pos_con.header.stamp = rclpy.time.Time().to_msg()
-        pos_con.link_name = 'tcp_link'
-        
-        volume = BoundingVolume()
-        primitive = SolidPrimitive()
-        primitive.type = SolidPrimitive.SPHERE
-        primitive.dimensions = [0.02]
-        volume.primitives.append(primitive)
-        volume.primitive_poses.append(pose.pose)
-        pos_con.constraint_region = volume
-        pos_con.weight = 1.0
-        constraints.position_constraints.append(pos_con)
-
-        # Orientation Constraint (Loose)
-        ori_con = OrientationConstraint()
-        ori_con.header = pos_con.header
-        ori_con.link_name = 'tcp_link'
-        ori_con.orientation = pose.pose.orientation
-        # Loosen tolerances significantly to help IK find any valid state
-        ori_con.absolute_x_axis_tolerance = 2.0
-        ori_con.absolute_y_axis_tolerance = 2.0
-        ori_con.absolute_z_axis_tolerance = 3.14
-        ori_con.weight = 1.0
-        constraints.orientation_constraints.append(ori_con)
-
-        goal_msg.request.goal_constraints.append(constraints)
-        
-        # We want MoveIt to plan AND execute
         goal_msg.planning_options.plan_only = False
 
-        self.get_logger().info(f'Sending goal to MoveIt for "tcp_link" at [{pose.pose.position.x:.3f}, {pose.pose.position.y:.3f}, {pose.pose.position.z:.3f}]')
+        self.get_logger().info('Sending joint goal to MoveIt...')
         self._action_client.send_goal_async(goal_msg)
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -170,6 +186,7 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()
