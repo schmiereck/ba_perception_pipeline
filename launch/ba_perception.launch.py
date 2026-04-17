@@ -44,8 +44,8 @@ def generate_launch_description():
 
     declare_target_plane_z = DeclareLaunchArgument(
         'target_plane_z',
-        default_value='0.05',
-        description='Ray-plane intersection Z in robot frame (meters). Lower than cup-top if VLM latches below the top.'
+        default_value='0.00',
+        description='Ray-plane intersection Z in robot frame (meters). VLM empirically latches on object bottom edge at steep angles.'
     )
 
     # 1. Perception Pipeline Node

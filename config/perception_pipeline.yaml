@@ -54,10 +54,12 @@
     # plane Z_robot = target_plane_z (meters) and monocular depth is bypassed.
     # This is far more accurate than DA V2 for known target planes (table top).
     # Use .nan to disable and fall back to depth-based backprojection.
-    # Example: 0.05 = top of a 5 cm cup sitting on the table (at robot Z=0).
-    # The VLM typically latches onto the visible top of the object, so set
-    # this to the physical height of the object's top — not the table.
-    target_plane_z: 0.05
+    # Empirical finding (2026-04-17): The VLM latches on the object's BOTTOM
+    # edge (where object meets the table), not the top. At steep downward
+    # camera angles on short objects the bottom rim dominates the visible
+    # silhouette. Use 0.00 (table level) for short objects on a table;
+    # raise only for tall objects where the VLM picks a higher feature.
+    target_plane_z: 0.00
 
     # --- Debug ---
     # Set to a directory path to save debug images (depth + annotated).
