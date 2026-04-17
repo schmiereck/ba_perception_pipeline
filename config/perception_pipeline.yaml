@@ -44,6 +44,16 @@
     # Leave empty ("") to use relative depth (no scaling).
     depth_calibration_file: "/home/thomas/ros2_ws/src/ba_perception_pipeline/config/depth_calibration.yaml"
 
+    # --- Ray-Plane Intersection (for on-table grasping) ---
+    # When set to a finite value, the VLM pixel ray is intersected with the
+    # plane Z_robot = target_plane_z (meters) and monocular depth is bypassed.
+    # This is far more accurate than DA V2 for known target planes (table top).
+    # Use .nan to disable and fall back to depth-based backprojection.
+    # Example: 0.05 = top of a 5 cm cup sitting on the table (at robot Z=0).
+    # The VLM typically latches onto the visible top of the object, so set
+    # this to the physical height of the object's top — not the table.
+    target_plane_z: 0.05
+
     # --- Debug ---
     # Set to a directory path to save debug images (depth + annotated).
     # Leave empty ("") to disable.

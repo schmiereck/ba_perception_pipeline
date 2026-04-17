@@ -15,6 +15,7 @@ Trigger interface (topic-based):
                — status/error feedback per request
 """
 
+import math
 import os
 import threading
 import time
@@ -89,6 +90,11 @@ class PerceptionPipelineNode(Node):
         # Depth calibration
         self.declare_parameter('depth_calibration_file', '')
 
+        # Ray-plane intersection (optional, for on-table grasping).
+        # If finite, the pixel ray is intersected with the plane Z_robot=this
+        # value instead of using monocular depth. Set to NaN to disable.
+        self.declare_parameter('target_plane_z', math.nan)
+
         # Debug
         self.declare_parameter('debug_save_path', '')
 
@@ -133,6 +139,13 @@ class PerceptionPipelineNode(Node):
         he_flat = self.get_parameter('hand_eye_transform') \
             .get_parameter_value().double_array_value
         self._T_robot_cam = np.array(he_flat, dtype=np.float64).reshape(4, 4)
+
+        self._target_plane_z = self.get_parameter('target_plane_z') \
+            .get_parameter_value().double_value
+        if math.isfinite(self._target_plane_z):
+            self.get_logger().info(
+                f'Ray-plane mode: intersecting pixel ray with Z_robot='
+                f'{self._target_plane_z:.3f}m (monocular depth bypassed)')
 
         # -- depth calibration (relative → metric) -----------------------
         depth_cal_file = self.get_parameter('depth_calibration_file') \
@@ -377,20 +390,32 @@ class PerceptionPipelineNode(Node):
             self._publish_status('ERROR: camera intrinsics not available')
             return
 
-        # Scale to metric depth if calibration is available
-        if self._depth_cal:
-            Z = scale_depth(
-                d_rel,
-                self._depth_cal['a'],
-                self._depth_cal['b'],
-                self._depth_cal['model_type'])
-            self.get_logger().info(f'Depth: d_rel={d_rel:.4f} → Z_metric={Z:.4f}m')
+        if math.isfinite(self._target_plane_z):
+            point_cam = self._ray_plane_intersect(u, v)
+            if point_cam is None:
+                self._publish_status(
+                    f'ERROR: ray-plane intersect failed '
+                    f'(ray parallel to plane or plane behind camera)')
+                return
+            Z = float(point_cam[2])
+            self.get_logger().info(
+                f'Ray-plane: pixel ({u},{v}) → camera frame '
+                f'[{point_cam[0]:.4f}, {point_cam[1]:.4f}, {point_cam[2]:.4f}]')
         else:
-            Z = d_rel
-
-        point_cam = backproject(u, v, Z, self._K)
-        self.get_logger().info(
-            f'Backprojection: camera frame [{point_cam[0]:.4f}, {point_cam[1]:.4f}, {point_cam[2]:.4f}]')
+            if self._depth_cal:
+                Z = scale_depth(
+                    d_rel,
+                    self._depth_cal['a'],
+                    self._depth_cal['b'],
+                    self._depth_cal['model_type'])
+                self.get_logger().info(
+                    f'Depth: d_rel={d_rel:.4f} → Z_metric={Z:.4f}m')
+            else:
+                Z = d_rel
+            point_cam = backproject(u, v, Z, self._K)
+            self.get_logger().info(
+                f'Backprojection: camera frame '
+                f'[{point_cam[0]:.4f}, {point_cam[1]:.4f}, {point_cam[2]:.4f}]')
 
         pose_cam_msg = PoseStamped()
         pose_cam_msg.header.stamp = stamp
@@ -433,6 +458,34 @@ class PerceptionPipelineNode(Node):
     # -----------------------------------------------------------------
     # helpers
     # -----------------------------------------------------------------
+    def _ray_plane_intersect(self, u: int, v: int) -> np.ndarray | None:
+        """Intersect the pixel's back-projected ray with Z_robot=target_plane_z.
+
+        Ray in camera frame starts at origin, direction d = [(u-cx)/fx,
+        (v-cy)/fy, 1]. Transformed to robot frame: origin = T[:3,3],
+        direction = R @ d. Solve for scalar s on the plane:
+        s = (target_plane_z - origin_z) / (R @ d)_z.
+        Returns point in CAMERA frame (so the same publish path works).
+        """
+        fx = self._K[0, 0]
+        fy = self._K[1, 1]
+        cx = self._K[0, 2]
+        cy = self._K[1, 2]
+        ray_cam = np.array([(u - cx) / fx, (v - cy) / fy, 1.0])
+
+        R = self._T_robot_cam[:3, :3]
+        t_vec = self._T_robot_cam[:3, 3]
+        ray_robot_dir = R @ ray_cam
+
+        if abs(ray_robot_dir[2]) < 1e-9:
+            return None
+
+        s = (self._target_plane_z - t_vec[2]) / ray_robot_dir[2]
+        if s <= 0:
+            return None
+
+        return s * ray_cam
+
     def _publish_status(self, text: str) -> None:
         msg = String()
         msg.data = text
