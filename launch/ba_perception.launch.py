@@ -60,7 +60,8 @@ def generate_launch_description():
         parameters=[{
             'planning_group': 'arm',
             'base_frame': 'base_link',
-            'z_offset': 0.05,
+            'tip_link': 'grasp_link',
+            'z_offset': 0.0,
             'auto_execute': auto_execute,
         }],
         env=env
