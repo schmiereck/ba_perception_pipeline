@@ -3,7 +3,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 
 def generate_launch_description():
     pkg_share = get_package_share_directory('ba_perception_pipeline')
@@ -22,6 +22,7 @@ def generate_launch_description():
     config_file = LaunchConfiguration('config_file')
     depth_cal_file = LaunchConfiguration('depth_cal_file')
     auto_execute = LaunchConfiguration('auto_execute')
+    target_plane_z = LaunchConfiguration('target_plane_z')
 
     declare_config_file = DeclareLaunchArgument(
         'config_file',
@@ -41,13 +42,23 @@ def generate_launch_description():
         description='If true, the robot will automatically move to the target'
     )
 
+    declare_target_plane_z = DeclareLaunchArgument(
+        'target_plane_z',
+        default_value='0.05',
+        description='Ray-plane intersection Z in robot frame (meters). Lower than cup-top if VLM latches below the top.'
+    )
+
     # 1. Perception Pipeline Node
     perception_node = Node(
         package='ba_perception_pipeline',
         executable='perception_pipeline_node',
         name='ba_perception_pipeline',
         output='screen',
-        parameters=[config_file, {'depth_calibration_file': depth_cal_file}],
+        parameters=[
+            config_file,
+            {'depth_calibration_file': depth_cal_file},
+            {'target_plane_z': PythonExpression(['float("', target_plane_z, '")'])},
+        ],
         env=env
     )
 
@@ -62,6 +73,7 @@ def generate_launch_description():
             'base_frame': 'base_link',
             'tip_link': 'grasp_link',
             'z_offset': 0.0,
+            'max_reach': 0.35,
             'auto_execute': auto_execute,
         }],
         env=env
@@ -71,6 +83,7 @@ def generate_launch_description():
     ld.add_action(declare_config_file)
     ld.add_action(declare_depth_cal_file)
     ld.add_action(declare_auto_execute)
+    ld.add_action(declare_target_plane_z)
     ld.add_action(perception_node)
     ld.add_action(goal_node)
 
