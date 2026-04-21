@@ -1,13 +1,17 @@
+# Metric depth calibration for DA V2 Small
+# Created: 2026-04-14T13:57:46.638706
+# Model: Z_metric = a / d_relative + b (if inverse)
+#         Z_metric = a * d_relative + b (if linear)
 model_type: inverse
-a: 0.1780754181630109
-b: -0.00937511193405148
-rmse_m: 0.013454583367788228
-n_samples: 9
-n_captures: 9
-created: '2026-04-21T14:56:59.023709'
+a: 0.11374824432011424
+b: 0.12049628721860836
+rmse_m: 0.015181409404692998
+n_samples: 576
+n_captures: 12
+created: '2026-04-14T13:57:46.638706'
 depth_range_m:
-- 0.21425192746626964
-- 0.3637446247482128
+- 0.24840733349093608
+- 0.44429392008844976
 d_range:
-- 0.49803921580314636
-- 0.7450980544090271
+- 0.34117648005485535
+- 0.7764706015586853

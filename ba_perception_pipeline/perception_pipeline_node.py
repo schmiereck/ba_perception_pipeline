@@ -33,9 +33,10 @@ from rclpy.qos import (
 )
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, TransformStamped
 from sensor_msgs.msg import CameraInfo, CompressedImage, Image
 from std_msgs.msg import String
+from tf2_ros import StaticTransformBroadcaster
 
 from ba_depth_node.depth_estimator import DepthEstimator
 from ba_perception_pipeline.backprojection import backproject, scale_depth
@@ -65,6 +66,8 @@ class PerceptionPipelineNode(Node):
                                '/ba_perception/status')
         self.declare_parameter('depth_debug_topic',
                                '/ba_overview_camera/depth/image_raw')
+        self.declare_parameter('base_frame', 'base_link')
+        self.declare_parameter('camera_frame', 'overview_camera_link')
 
         # Depth model
         self.declare_parameter('depth_model_id',
@@ -139,6 +142,12 @@ class PerceptionPipelineNode(Node):
         he_flat = self.get_parameter('hand_eye_transform') \
             .get_parameter_value().double_array_value
         self._T_robot_cam = np.array(he_flat, dtype=np.float64).reshape(4, 4)
+
+        # -- TF static broadcaster for camera ----------------------------
+        self._tf_static_bc = StaticTransformBroadcaster(self)
+        self._base_frame = self.get_parameter('base_frame').get_parameter_value().string_value
+        self._camera_frame = self.get_parameter('camera_frame').get_parameter_value().string_value
+        self._publish_hand_eye_tf()
 
         self._target_plane_z = self.get_parameter('target_plane_z') \
             .get_parameter_value().double_value
@@ -533,6 +542,56 @@ class PerceptionPipelineNode(Node):
         cv2.imwrite(
             os.path.join(self._debug_save_path, 'target_latest.png'),
             annotated)
+
+    def _publish_hand_eye_tf(self) -> None:
+        """Publish the calibrated T_base_cam to TF."""
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = self._base_frame
+        t.child_frame_id = self._camera_frame
+        
+        # self._T_robot_cam is T_base_cam (4x4)
+        t.transform.translation.x = float(self._T_robot_cam[0, 3])
+        t.transform.translation.y = float(self._T_robot_cam[1, 3])
+        t.transform.translation.z = float(self._T_robot_cam[2, 3])
+        
+        q = self._mat_to_quat(self._T_robot_cam[:3, :3])
+        t.transform.rotation.x = q[0]
+        t.transform.rotation.y = q[1]
+        t.transform.rotation.z = q[2]
+        t.transform.rotation.w = q[3]
+        
+        self._tf_static_bc.sendTransform(t)
+        self.get_logger().info(f'Published hand-eye TF: {self._base_frame} -> {self._camera_frame}')
+
+    def _mat_to_quat(self, R: np.ndarray) -> tuple:
+        """3x3 rotation matrix to quaternion (x, y, z, w)."""
+        tr = R[0, 0] + R[1, 1] + R[2, 2]
+        if tr > 0:
+            s = np.sqrt(tr + 1.0) * 2
+            qw = 0.25 * s
+            qx = (R[2, 1] - R[1, 2]) / s
+            qy = (R[0, 2] - R[2, 0]) / s
+            qz = (R[1, 0] - R[0, 1]) / s
+        elif (R[0, 0] > R[1, 1]) and (R[0, 0] > R[2, 2]):
+            s = np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2]) * 2
+            qw = (R[2, 1] - R[1, 2]) / s
+            qx = 0.25 * s
+            qy = (R[0, 1] + R[1, 0]) / s
+            qz = (R[0, 2] + R[2, 0]) / s
+        elif R[1, 1] > R[2, 2]:
+            s = np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2]) * 2
+            qw = (R[0, 2] - R[2, 0]) / s
+            qx = (R[0, 1] + R[1, 0]) / s
+            qy = 0.25 * s
+            qz = (R[1, 2] + R[2, 1]) / s
+        else:
+            s = np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1]) * 2
+            qw = (R[1, 0] - R[0, 1]) / s
+            qx = (R[0, 2] + R[2, 0]) / s
+            qy = (R[1, 2] + R[2, 1]) / s
+            qz = 0.25 * s
+        return (float(qx), float(qy), float(qz), float(qw))
 
 
 def main(args=None) -> None:
