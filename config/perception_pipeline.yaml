@@ -37,9 +37,9 @@
     # (URDF +Y = physical forward, since the robot is mounted such that
     # joint_0 = π/2 with joint_1 folded forward reaches physical +X).
     hand_eye_transform: [
-       0.00000, -0.90546,  0.42443, -0.15000,
-      -1.00000,  0.00000,  0.00000,  0.17000,
-       0.00000, -0.42443, -0.90546,  0.32000,
+      -0.07478, -0.90259,  0.42396, -0.14476,
+      -0.99604,  0.08810,  0.01188,  0.16071,
+      -0.04808, -0.42140, -0.90560,  0.36451,
        0.00000,  0.00000,  0.00000,  1.00000,
     ]
 
@@ -59,7 +59,8 @@
     # camera angles on short objects the bottom rim dominates the visible
     # silhouette. Use 0.00 (table level) for short objects on a table;
     # raise only for tall objects where the VLM picks a higher feature.
-    target_plane_z: 0.00
+    #target_plane_z: 0.0
+    target_plane_z: .nan
 
     # --- Debug ---
     # Set to a directory path to save debug images (depth + annotated).
