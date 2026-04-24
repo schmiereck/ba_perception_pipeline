@@ -18,8 +18,16 @@
 
     # --- VLM ---
     # Provider: "groq" or "gemini"
-    vlm_provider: "groq"
-    vlm_model: "meta-llama/llama-4-scout-17b-16e-instruct"
+    # https://ai.google.dev/gemini-api/docs/models?hl=de
+    # aktuelleste ist: gemini-3-flash-preview
+    # läuft noch: gemini-2.5-flash
+    # das günstigste: gemini-2.5-flash-lite
+    # speziell Robotic: gemini-robotics-er-1.5-preview
+
+    #vlm_provider: "groq"
+    #vlm_model: "meta-llama/llama-4-scout-17b-16e-instruct"
+    vlm_provider: "gemini"
+    vlm_model: "gemini-2.5-flash"
     # API key — set via environment variable or override here.
     # IMPORTANT: do not commit real API keys to git!
     vlm_api_key: ""
@@ -60,7 +68,7 @@
     # silhouette. Use 0.00 (table level) for short objects on a table;
     # raise only for tall objects where the VLM picks a higher feature.
     #target_plane_z: 0.0
-    target_plane_z: .nan
+    #target_plane_z: .nan
 
     # --- Debug ---
     # Set to a directory path to save debug images (depth + annotated).

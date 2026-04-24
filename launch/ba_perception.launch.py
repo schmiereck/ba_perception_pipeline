@@ -18,11 +18,9 @@ def generate_launch_description():
         else:
             env['PYTHONPATH'] = venv_site
 
-    # --- Arguments ---
     config_file = LaunchConfiguration('config_file')
     depth_cal_file = LaunchConfiguration('depth_cal_file')
     auto_execute = LaunchConfiguration('auto_execute')
-    target_plane_z = LaunchConfiguration('target_plane_z')
 
     declare_config_file = DeclareLaunchArgument(
         'config_file',
@@ -40,12 +38,6 @@ def generate_launch_description():
         'auto_execute',
         default_value='false',
         description='If true, the robot will automatically move to the target'
-    )
-
-    declare_target_plane_z = DeclareLaunchArgument(
-        'target_plane_z',
-        default_value='0.00',
-        description='Ray-plane intersection Z in robot frame (meters). VLM empirically latches on object bottom edge at steep angles.'
     )
 
     velocity_scaling = LaunchConfiguration('velocity_scaling')
@@ -72,7 +64,6 @@ def generate_launch_description():
         parameters=[
             config_file,
             {'depth_calibration_file': depth_cal_file},
-            {'target_plane_z': PythonExpression(['float("', target_plane_z, '")'])},
         ],
         env=env
     )
@@ -100,7 +91,6 @@ def generate_launch_description():
     ld.add_action(declare_config_file)
     ld.add_action(declare_depth_cal_file)
     ld.add_action(declare_auto_execute)
-    ld.add_action(declare_target_plane_z)
     ld.add_action(declare_velocity_scaling)
     ld.add_action(declare_acceleration_scaling)
     ld.add_action(perception_node)
