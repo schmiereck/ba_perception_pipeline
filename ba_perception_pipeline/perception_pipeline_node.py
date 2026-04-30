@@ -243,7 +243,8 @@ class PerceptionPipelineNode(Node):
         self._request_sub = self.create_subscription(
             String, request_topic, self._request_cb, 10, callback_group=self._cb_group)
 
-        # Store topic and QoS for on-demand image subscription
+        # Persistent image subscription — keeps DDS discovery warm so the
+        # first request doesn't race against a cold subscriber timeout.
         self._image_topic = image_topic
         self._image_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -251,6 +252,9 @@ class PerceptionPipelineNode(Node):
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
         )
+        self._image_sub = self.create_subscription(
+            CompressedImage, self._image_topic, self._image_cb,
+            self._image_qos, callback_group=self._cb_group)
 
         self.get_logger().info(
             f'Perception pipeline ready (On-Demand image capture enabled). '
@@ -325,17 +329,15 @@ class PerceptionPipelineNode(Node):
         self.get_logger().info(f'Capturing image from {self._image_topic}...')
         
         with self._frame_lock:
-            self._latest_bgr = None  # Reset buffer
-        
-        # Temporary subscription
-        sub = self.create_subscription(
-            CompressedImage, self._image_topic, self._image_cb, self._image_qos,
-            callback_group=self._cb_group)
-        
-        # Wait for a frame (max 5 seconds)
+            self._latest_bgr = None  # Reset — force capture of a fresh frame
+
+        # Wait for a frame — persistent subscription keeps DDS warm,
+        # so we only wait for the next camera frame (~1/fps seconds max).
+        # Camera publishes at ~0.37 Hz compressed → up to ~3s per frame,
+        # but DDS gaps can stretch this; 20s covers ~7 frame intervals.
         wait_start = time.time()
         bgr = None
-        while time.time() - wait_start < 5.0:
+        while time.time() - wait_start < 40.0:
             with self._frame_lock:
                 if self._latest_bgr is not None:
                     bgr = self._latest_bgr
@@ -344,8 +346,6 @@ class PerceptionPipelineNode(Node):
                     break
             time.sleep(0.05)
         
-        self.destroy_subscription(sub)
-
         if bgr is None:
             self._publish_status('ERROR: timeout waiting for camera frame')
             return
